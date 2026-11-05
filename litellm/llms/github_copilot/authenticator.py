@@ -14,7 +14,6 @@ from litellm.litellm_core_utils.asyncify import can_block_current_thread
 from litellm.llms.custom_httpx.http_handler import get_httpx_client
 
 from .app_installation_auth import (
-    INSTALLATION_TOKENS,
     InstallationTokenCache,
     github_app_auth_configured,
     github_app_installation_from_env,
@@ -31,6 +30,7 @@ DEFAULT_GITHUB_CLIENT_ID: Final = "Iv1.b507a08c87ecfe98"
 DEFAULT_GITHUB_DEVICE_CODE_URL: Final = "https://github.com/login/device/code"
 DEFAULT_GITHUB_ACCESS_TOKEN_URL: Final = "https://github.com/login/oauth/access_token"
 DEFAULT_GITHUB_API_KEY_URL: Final = "https://api.github.com/copilot_internal/v2/token"
+INSTALLATION_TOKENS: Final = InstallationTokenCache(client_factory=lambda: get_httpx_client().client)
 
 
 class CopilotEndpoints(BaseModel):

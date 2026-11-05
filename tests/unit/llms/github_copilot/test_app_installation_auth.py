@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
+import httpx
 import jwt
 import pytest
 import respx
@@ -43,7 +44,7 @@ def app_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _authenticator(clock: _Clock) -> Authenticator:
-    return Authenticator(installation_tokens=InstallationTokenCache(clock=clock))
+    return Authenticator(installation_tokens=InstallationTokenCache(client_factory=httpx.Client, clock=clock))
 
 
 def test_app_auth_mints_a_copilot_scoped_installation_token_signed_by_the_app(app_env: Path) -> None:

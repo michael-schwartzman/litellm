@@ -9,8 +9,6 @@ from typing import Final
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from litellm.llms.custom_httpx.http_handler import HTTPHandler, get_httpx_client
-
 from .common_utils import GetAPIKeyError
 
 GITHUB_APP_ID_ENV: Final = "GITHUB_COPILOT_APP_ID"
@@ -121,7 +119,7 @@ def _app_jwt(installation: GithubAppInstallation, now: float) -> str:
         ) from e
 
 
-def mint_installation_token(installation: GithubAppInstallation, client: HTTPHandler, now: float) -> InstallationToken:
+def mint_installation_token(installation: GithubAppInstallation, client: httpx.Client, now: float) -> InstallationToken:
     url: Final = f"{installation.api_url}/app/installations/{installation.installation_id}/access_tokens"
     try:
         response: Final = client.post(
@@ -132,7 +130,7 @@ def mint_installation_token(installation: GithubAppInstallation, client: HTTPHan
                 "X-GitHub-Api-Version": "2022-11-28",
             },
             json={"permissions": {"organization_copilot_requests": "read"}},
-        )
+        ).raise_for_status()
         parsed: Final = _AccessTokenResponse.model_validate_json(response.content)
     except httpx.HTTPStatusError as e:
         raise GetAPIKeyError(
@@ -151,7 +149,7 @@ def mint_installation_token(installation: GithubAppInstallation, client: HTTPHan
 class InstallationTokenCache:
     def __init__(
         self,
-        client_factory: Callable[[], HTTPHandler] = get_httpx_client,
+        client_factory: Callable[[], httpx.Client],
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._client_factory: Final = client_factory
@@ -169,5 +167,3 @@ class InstallationTokenCache:
             self._tokens[installation] = fresh
             return fresh.token
 
-
-INSTALLATION_TOKENS: Final = InstallationTokenCache()
