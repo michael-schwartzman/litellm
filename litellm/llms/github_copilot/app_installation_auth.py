@@ -166,4 +166,3 @@ class InstallationTokenCache:
             fresh: Final = mint_installation_token(installation, self._client_factory(), now)
             self._tokens[installation] = fresh
             return fresh.token
-
