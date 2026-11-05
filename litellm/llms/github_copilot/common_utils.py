@@ -16,6 +16,9 @@ EDITOR_PLUGIN_VERSION: Final = f"copilot-chat/{COPILOT_VERSION}"
 USER_AGENT: Final = f"GitHubCopilotChat/{COPILOT_VERSION}"
 API_VERSION: Final = "2025-04-01"
 DEFAULT_GITHUB_COPILOT_API_BASE: Final = "https://api.githubcopilot.com"
+INSTALLATION_TOKEN_PREFIX: Final = "ghs_"
+# Copilot rejects installation tokens under any other integration id. This is the id the Copilot SDK runtime sends.
+INSTALLATION_TOKEN_INTEGRATION_ID: Final = "copilot-developer-cli"
 
 
 class GithubCopilotError(BaseLLMException):
@@ -69,7 +72,9 @@ def get_copilot_default_headers(
     return {
         "Authorization": f"Bearer {api_key}",
         "content-type": "application/json",
-        "copilot-integration-id": "vscode-chat",
+        "copilot-integration-id": (
+            INSTALLATION_TOKEN_INTEGRATION_ID if api_key.startswith(INSTALLATION_TOKEN_PREFIX) else "vscode-chat"
+        ),
         "editor-version": "vscode/1.95.0",  # Fixed version for stability
         "editor-plugin-version": EDITOR_PLUGIN_VERSION,
         "user-agent": USER_AGENT,

@@ -13,6 +13,12 @@ from litellm._logging import verbose_logger
 from litellm.litellm_core_utils.asyncify import can_block_current_thread
 from litellm.llms.custom_httpx.http_handler import get_httpx_client
 
+from .app_installation_auth import (
+    INSTALLATION_TOKENS,
+    InstallationTokenCache,
+    github_app_auth_configured,
+    github_app_installation_from_env,
+)
 from .common_utils import (
     GetAccessTokenError,
     GetAPIKeyError,
@@ -100,8 +106,9 @@ def github_api_headers(
 
 
 class Authenticator:
-    def __init__(self) -> None:
+    def __init__(self, installation_tokens: InstallationTokenCache = INSTALLATION_TOKENS) -> None:
         """Initialize the GitHub Copilot authenticator with configurable token paths."""
+        self.installation_tokens: Final = installation_tokens
         # Token storage paths
         self.token_dir = os.getenv(
             "GITHUB_COPILOT_TOKEN_DIR",
@@ -174,6 +181,9 @@ class Authenticator:
         Raises:
             GetAPIKeyError: If unable to obtain an API key.
         """
+        installation: Final = github_app_installation_from_env()
+        if installation is not None:
+            return self.installation_tokens.token(installation)
         unsaved: Final = self._unsaved_api_key()
         if unsaved is not None:
             return unsaved.token
@@ -214,6 +224,8 @@ class Authenticator:
         Returns:
             Optional[str]: The GitHub Copilot API endpoint, or None if not found.
         """
+        if github_app_auth_configured():
+            return None
         cached: Final = self._unsaved_api_key() or self._read_api_key_file(CopilotCachedEndpoints)
         if cached is None or cached.endpoints is None:
             return None
