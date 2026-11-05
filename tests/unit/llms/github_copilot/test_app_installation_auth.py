@@ -123,9 +123,11 @@ def test_partial_app_config_fails_instead_of_falling_back_to_device_login(
 
 @pytest.mark.parametrize("status", [401, 403, 404])
 def test_github_refusing_the_token_is_an_auth_error(app_env: Path, status: int) -> None:
-    with respx.mock(assert_all_called=True) as router, pytest.raises(GetAPIKeyError) as exc:
+    authenticator: Final = _authenticator(_Clock(NOW))
+    with respx.mock(assert_all_called=True) as router:
         router.post(TOKEN_URL).respond(status, json={"message": "nope"})
-        _authenticator(_Clock(NOW)).get_api_key()
+        with pytest.raises(GetAPIKeyError) as exc:
+            authenticator.get_api_key()
 
     assert exc.value.status_code == 401
     assert str(status) in exc.value.message
