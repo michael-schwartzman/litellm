@@ -4,6 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import i18n from "@/i18n/i18n";
 import type { SkillCatalogMetadata } from "./skillCatalog";
 
+const IDENTITY_LABELS = {
+  created_by: "skills.table.columns.createdBy",
+  published_by: "skills.table.columns.publishedBy",
+  approved_by: "skills.table.columns.approvedBy",
+} as const;
+
 export function getSkillMetadataColumns<T extends SkillCatalogMetadata>(): ColumnDef<T>[] {
   return [
     {
@@ -29,13 +35,7 @@ export function getSkillMetadataColumns<T extends SkillCatalogMetadata>(): Colum
         accessorKey: field,
         size: 190,
         enableSorting: false,
-        header: i18n.t(
-          {
-            created_by: "skills.table.columns.createdBy",
-            published_by: "skills.table.columns.publishedBy",
-            approved_by: "skills.table.columns.approvedBy",
-          }[field],
-        ),
+        header: i18n.t(IDENTITY_LABELS[field]),
         cell: ({ row }) => (
           <span className="block max-w-48 truncate text-xs" title={row.original[field] ?? undefined}>
             {row.original[field] || i18n.t("skills.table.notRecorded")}
