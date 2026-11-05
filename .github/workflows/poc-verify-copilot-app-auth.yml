@@ -20,8 +20,7 @@ jobs:
       - name: unit tests (github_copilot)
         run: uv run pytest tests/unit/llms/github_copilot -q -p no:cacheprovider 2>&1 | tail -25
       - name: lint gates
-        continue-on-error: true
-        run: BASE_REF=79e63d3e06 make lint 2>&1 | tail -60
+        run: set -o pipefail; BASE_REF=79e63d3e06 make lint 2>&1 | tail -80
       - name: e2e before (upstream main)
         env:
           GITHUB_COPILOT_APP_ID: "5626339"
