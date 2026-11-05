@@ -25,6 +25,7 @@ from litellm.proxy._types import (
 )
 from litellm.proxy.db.health_check_latest import latest_by_model_name
 from litellm.proxy.utils import get_custom_url
+from litellm.repositories.plugin_publication import read_plugin_publisher, read_plugin_review
 from litellm.repositories.table_repositories import ClaudeCodePluginRepository
 from litellm.router_strategy.complexity_router.fuse_presets import FusePresetCatalog, get_fuse_presets
 from litellm.types.agents import AgentCard
@@ -71,6 +72,9 @@ class _EndpointEntry(TypedDict):
 
 
 class _PluginRow(Protocol):
+    @property
+    def created_by(self) -> str | None: ...
+
     @property
     def id(self) -> str: ...
 
@@ -389,9 +393,14 @@ async def public_skill_hub():
         for plugin in plugins:
             raw = plugin.manifest_json or {}
             manifest = json.loads(raw) if isinstance(raw, str) else raw
+            review = read_plugin_review(MANIFEST_FIELDS.validate_python(manifest))
             items.append(
                 PluginListItem(
                     id=plugin.id,
+                    created_by=plugin.created_by,
+                    approved_by=review.approved_by if review else None,
+                    published_by=read_plugin_publisher(MANIFEST_FIELDS.validate_python(manifest)),
+                    security_scan_passed=review.security_scan_passed if review else False,
                     name=plugin.name,
                     enabled=plugin.enabled,
                     created_at=str(plugin.created_at) if plugin.created_at else None,

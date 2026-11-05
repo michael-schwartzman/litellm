@@ -6920,7 +6920,7 @@ export const uploadClaudeCodeSkill = async (
   return apiClient.post("/claude-code/plugins/upload", { accessToken, rawBody: body });
 };
 
-export const listSkillHubSkills = (accessToken: string, query: { limit: number; offset: number }) =>
+export const listSkillHubSkills = (accessToken: string, query: { limit: number; offset: number; query?: string; tag?: string; security_scan_passed?: boolean }) =>
   apiClient.get<components["schemas"]["SkillHubList"]>("/skill-hub/skills", { accessToken, query });
 
 export const getSkillHubSkill = (accessToken: string, name: string) =>

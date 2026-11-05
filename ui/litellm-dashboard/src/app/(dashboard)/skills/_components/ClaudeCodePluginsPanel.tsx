@@ -1,3 +1,5 @@
+import { SkillFilters } from "@/components/claude_code_plugins/SkillFilters";
+import { useSkillFilters } from "@/components/claude_code_plugins/skillCatalog";
 import React, { useState } from "react";
 import { useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { Trans, useTranslation } from "react-i18next";
@@ -37,6 +39,8 @@ const CATALOG_STATE: UrlTableStateOptions<never> = {
   defaultSort: { id: "name", desc: false },
   filterColumns: [],
 };
+
+const scanResultFilter = (scan: string): boolean | undefined => (scan === "all" ? undefined : scan === "yes");
 
 const SKILLS_TABS = ["skills", "submissions"] as const;
 
@@ -109,9 +113,17 @@ const SkillsPanelContent: React.FC<ClaudeCodePluginsPanelProps> = ({
   const showForm = Boolean(isAddModalVisible || editingSkill) && canWrite;
   const { pagination, onPaginationChange } = useUrlTableState(CATALOG_STATE);
   const { pageIndex, pageSize } = pagination;
+  const filters = useSkillFilters();
+  const catalogQuery = {
+    limit: pageSize,
+    offset: pageIndex * pageSize,
+    query: filters.search,
+    tag: filters.tag,
+    security_scan_passed: scanResultFilter(filters.scan),
+  };
   const plugins = useQuery({
-    queryKey: [...queryScope, "published", pageIndex, pageSize],
-    queryFn: () => listSkillHubSkills(accessToken!, { limit: pageSize, offset: pageIndex * pageSize }),
+    queryKey: [...queryScope, "published", pageIndex, pageSize, filters.search, filters.tag, filters.scan],
+    queryFn: () => listSkillHubSkills(accessToken!, catalogQuery),
     enabled: Boolean(accessToken),
   });
   const pluginsList = plugins.data?.skills ?? [];
@@ -182,6 +194,9 @@ const SkillsPanelContent: React.FC<ClaudeCodePluginsPanelProps> = ({
               </TabsTrigger>
             </TabsList>
             <TabsContent value="skills">
+              <div className="my-4">
+                <SkillFilters {...filters} tags={plugins.data?.tags ?? []} />
+              </div>
               {plugins.isError && (
                 <div role="alert" className="my-3 text-sm text-destructive">
                   {t("skills.panel.loadFailed")}
@@ -193,6 +208,7 @@ const SkillsPanelContent: React.FC<ClaudeCodePluginsPanelProps> = ({
               <PluginTable
                 pluginsList={pluginsList}
                 isLoading={plugins.isLoading}
+                filtered={filters.active}
                 onDeleteClick={handleDeleteClick}
                 isAdmin={isAdmin}
                 onPluginClick={setSelectedSkillId}

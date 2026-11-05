@@ -41,6 +41,8 @@ class SubmissionRows:
         return updated
 
     async def query_raw(self, query: str, *args: object) -> tuple[Mapping[str, object], ...]:
+        if "scan_json" in query:
+            return ({"scan_json": None},)
         if 'FROM "LiteLLM_SkillSubmission"' not in query or "FOR UPDATE" in query:
             return ()
         if "COUNT(*) AS count" in query:

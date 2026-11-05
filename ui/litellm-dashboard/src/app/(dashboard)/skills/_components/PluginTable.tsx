@@ -13,6 +13,7 @@ import { getPluginTableColumns } from "./PluginTableColumns";
 interface PluginTableProps {
   pluginsList: SkillHubSkill[];
   isLoading: boolean;
+  filtered?: boolean;
   onDeleteClick: (pluginName: string, displayName: string) => void;
   isAdmin: boolean;
   onPluginClick: (pluginId: string) => void;
@@ -20,20 +21,31 @@ interface PluginTableProps {
 
 const DEFAULT_SORTING: SortingState = [{ id: "name", desc: false }];
 
-function EmptyState() {
+function EmptyState({ filtered }: { filtered: boolean }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center gap-1 py-6">
       <div className="mb-1 flex size-10 items-center justify-center rounded-lg bg-muted">
         <Inbox className="size-5 text-muted-foreground" />
       </div>
-      <div className="text-sm font-medium text-foreground">{t("skills.table.empty.title")}</div>
-      <div className="text-sm text-muted-foreground">{t("skills.table.empty.description")}</div>
+      <div className="text-sm font-medium text-foreground">
+        {t(filtered ? "aiHub.skillHubDashboard.emptyState.noMatchTitle" : "skills.table.empty.title")}
+      </div>
+      <div className="text-sm text-muted-foreground">
+        {t(filtered ? "aiHub.skillHubDashboard.emptyState.noMatchBody" : "skills.table.empty.description")}
+      </div>
     </div>
   );
 }
 
-const PluginTable: React.FC<PluginTableProps> = ({ pluginsList, isLoading, onDeleteClick, isAdmin, onPluginClick }) => {
+const PluginTable: React.FC<PluginTableProps> = ({
+  pluginsList,
+  isLoading,
+  filtered = false,
+  onDeleteClick,
+  isAdmin,
+  onPluginClick,
+}) => {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>(DEFAULT_SORTING);
 
@@ -53,7 +65,7 @@ const PluginTable: React.FC<PluginTableProps> = ({ pluginsList, isLoading, onDel
       onSortingChange={setSorting}
       isLoading={isLoading}
       loadingMessage={t("skills.table.loading")}
-      noDataMessage={<EmptyState />}
+      noDataMessage={<EmptyState filtered={filtered} />}
       size="compact"
     />
   );

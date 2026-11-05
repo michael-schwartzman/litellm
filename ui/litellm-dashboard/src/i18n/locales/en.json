@@ -1644,11 +1644,18 @@
         "description": "Description",
         "category": "Category",
         "public": "Public",
-        "createdAt": "Created At",
+        "createdAt": "Created",
         "actions": "Actions",
         "domain": "Domain",
-        "updatedAt": "Updated at"
-      }
+        "updatedAt": "Last updated",
+        "tags": "Tags",
+        "createdBy": "Created by",
+        "publishedBy": "Published by",
+        "approvedBy": "Approved by",
+        "securityScan": "Security scan"
+      },
+      "notRecorded": "Not recorded",
+      "scanHelp": "Yes means this published version has a completed scan with no findings and a risk score of 0. No means it has not passed a recorded scan."
     },
     "addForm": {
       "title": "Register your skill",
@@ -1668,7 +1675,7 @@
         "namespace": "Namespace (Optional)",
         "description": "Description (Optional)",
         "category": "Category (Optional)",
-        "keywords": "Keywords (Optional)",
+        "keywords": "Tags (Optional)",
         "version": "Version (Optional)",
         "authorName": "Author Name (Optional)",
         "authorEmail": "Author Email (Optional)"
@@ -1683,7 +1690,7 @@
         "namespace": "Sub-grouping within domain (e.g., workflows)",
         "description": "Brief description of what the skill does",
         "category": "Select a category or enter a custom one",
-        "keywords": "Comma-separated list of keywords for search",
+        "keywords": "Comma-separated list of tags for search",
         "version": "Semantic version (e.g., 1.0.0)",
         "authorName": "Name of the skill author or organization",
         "authorEmail": "Contact email for the skill author"
@@ -1748,7 +1755,7 @@
         "path": "Path (optional)",
         "domain": "Domain (optional)",
         "namespace": "Namespace (optional)",
-        "keywords": "Keywords (optional)"
+        "keywords": "Tags (optional)"
       },
       "uploadHint": "Choose a ZIP up to 10 MiB containing SKILL.md. Its frontmatter supplies the skill name and description.",
       "replacementHint": "The replacement SKILL.md supplies the description. Domain, namespace, and keywords are preserved.",
@@ -1803,7 +1810,7 @@
         "source": "Source",
         "author": "Author",
         "homepage": "Homepage",
-        "keywords": "Keywords",
+        "keywords": "Tags",
         "category": "Category",
         "domain": "Domain",
         "namespace": "Namespace",
@@ -1816,6 +1823,15 @@
     "detail": {
       "subtitle": "Published skill metadata and portable archive",
       "private": "Private"
+    },
+    "filters": {
+      "allTags": "All tags",
+      "tag": "Filter by tag",
+      "allScans": "All scan statuses",
+      "scanned": "Security scan: Yes",
+      "notScanned": "Security scan: No",
+      "search": "Search skills, tags, or people…",
+      "clear": "Clear filters"
     }
   },
   "claudeCodePlugins": {

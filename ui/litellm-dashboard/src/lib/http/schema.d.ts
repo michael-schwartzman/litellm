@@ -42005,11 +42005,15 @@ export interface components {
          * @description Plugin item in list responses.
          */
         PluginListItem: {
+            /** Approved By */
+            approved_by?: string | null;
             author?: components["schemas"]["PluginAuthor"] | null;
             /** Category */
             category?: string | null;
             /** Created At */
             created_at: string | null;
+            /** Created By */
+            created_by?: string | null;
             /** Description */
             description: string | null;
             /** Domain */
@@ -42028,6 +42032,13 @@ export interface components {
             name: string;
             /** Namespace */
             namespace?: string | null;
+            /** Published By */
+            published_by?: string | null;
+            /**
+             * Security Scan Passed
+             * @default false
+             */
+            security_scan_passed: boolean;
             /** Source */
             source: {
                 [key: string]: string;
@@ -46811,6 +46822,11 @@ export interface components {
             next_offset: number | null;
             /** Skills */
             skills: components["schemas"]["SkillHubSkill"][];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
         };
         /** SkillHubMetadata */
         SkillHubMetadata: {
@@ -46896,8 +46912,14 @@ export interface components {
         };
         /** SkillHubSkill */
         SkillHubSkill: {
+            /** Approved By */
+            approved_by?: string | null;
             /** Content Url */
             content_url?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
             /** Description */
             description?: string | null;
             /** Domain */
@@ -46912,6 +46934,13 @@ export interface components {
             name: string;
             /** Namespace */
             namespace?: string | null;
+            /** Published By */
+            published_by?: string | null;
+            /**
+             * Security Scan Passed
+             * @default false
+             */
+            security_scan_passed: boolean;
             /** Source */
             source: {
                 [key: string]: string;
@@ -74140,6 +74169,8 @@ export interface operations {
                 query?: string;
                 offset?: number;
                 limit?: number;
+                tag?: string;
+                security_scan_passed?: boolean | null;
             };
             header?: never;
             path?: never;

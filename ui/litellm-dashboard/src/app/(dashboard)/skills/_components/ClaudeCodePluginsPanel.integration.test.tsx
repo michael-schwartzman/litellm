@@ -1,7 +1,8 @@
+import userEvent from "@testing-library/user-event";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OnUrlUpdateFunction } from "nuqs/adapters/testing";
-import { renderWithProviders, testQueryClient } from "@/../tests/test-utils";
+import { chooseSelectOption, renderWithProviders, testQueryClient } from "@/../tests/test-utils";
 import { setGlobalLitellmHeaderName } from "@/components/networking";
 import type { SkillHubSkill, SkillSubmission } from "@/components/claude_code_plugins/types";
 import { toast } from "@/lib/toast";
@@ -60,6 +61,7 @@ const pending: SkillSubmission = {
 const fetchMock = vi.fn<typeof fetch>();
 const queryDefaults = testQueryClient.getDefaultOptions();
 let catalog: SkillHubSkill[];
+let catalogRequests: URL[];
 let submissions: SkillSubmission[];
 let pageRequests: { limit: number; offset: number }[];
 let writes: { path: string; method: string; body: RequestInit["body"] }[];
@@ -119,6 +121,7 @@ beforeEach(() => {
   testQueryClient.clear();
   vi.clearAllMocks();
   catalog = [published];
+  catalogRequests = [];
   submissions = [pending];
   pageRequests = [];
   writes = [];
@@ -135,14 +138,17 @@ beforeEach(() => {
       return respondToWrite(path, body);
     }
     if (path === "/skill-hub/skills") {
+      catalogRequests.push(url);
       const limit = Number(url.searchParams.get("limit"));
       const offset = Number(url.searchParams.get("offset"));
       const skills = catalog.slice(offset, offset + limit);
-      return Response.json({
+      const result = {
+        tags: ["review", "engineering"],
         skills,
         count: skills.length,
         next_offset: offset + limit < catalog.length ? offset + limit : null,
-      });
+      };
+      return Response.json(result);
     }
     if (path === `/skill-hub/skills/${published.name}`)
       return Response.json(catalog.find((skill) => skill.name === published.name));
@@ -203,7 +209,7 @@ it("paginates the neutral catalog and refreshes detail for a recreated skill", a
   renderWithProviders(<ClaudeCodePluginsPanel accessToken="member-token" userRole="Internal User" />);
   fireEvent.click(await screen.findByText(published.name));
   expect(await screen.findByRole("button", { name: "Edit Skill" })).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Skills"));
+  fireEvent.click(screen.getByText("Skills Hub"));
   catalog = [
     { ...published, id: "filler", name: "catalog-0" },
     ...catalog.slice(1),
@@ -218,7 +224,7 @@ it("paginates the neutral catalog and refreshes detail for a recreated skill", a
   fireEvent.click(screen.getByText(published.name));
   expect(await screen.findByRole("button", { name: "Edit Skill" })).toBeInTheDocument();
   expect(screen.getByText("Recreated instructions")).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Skills"));
+  fireEvent.click(screen.getByText("Skills Hub"));
   fireEvent.click(screen.getByRole("button", { name: "Previous" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled());
 });
@@ -331,7 +337,7 @@ it("allows a member submission, explains approval and refreshes their pending li
   await waitFor(() =>
     expect(screen.getByRole("tab", { name: "Published skills" })).toHaveAttribute("aria-selected", "true"),
   );
-  fireEvent.click(screen.getByRole("button", { name: "+ Add Skill" }));
+  fireEvent.click(screen.getByRole("button", { name: "+ Register your skill" }));
   fireEvent.click(screen.getByRole("radio", { name: "Import URL" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Source URL" }), {
     target: { value: "https://github.com/example/new-skill" },
@@ -530,10 +536,10 @@ it("refreshes detail after a review conflict and removes actions when another re
 
 it("keeps an effective Admin viewer read-only while allowing full submission inspection", async () => {
   renderWithProviders(<ClaudeCodePluginsPanel accessToken="viewer-token" userRole="Admin" isViewOnly />);
-  expect(screen.getByRole("button", { name: "+ Add Skill" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "+ Register your skill" })).toBeDisabled();
   fireEvent.click(await screen.findByText(published.name));
   expect(screen.queryByRole("button", { name: "Edit Skill" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText("Skills"));
+  fireEvent.click(screen.getByText("Skills Hub"));
   fireEvent.click(screen.getByRole("tab", { name: "Submissions" }));
   fireEvent.click(await screen.findByRole("button", { name: "View details" }));
   expect(await screen.findByText("Currently published")).toBeInTheDocument();
@@ -629,4 +635,23 @@ it("ignores an in-flight admin submission list that resolves after the same acco
   expect(screen.getByText("No submissions yet")).toBeInTheDocument();
   expect(screen.queryByText("Proposed instructions")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+});
+
+it("applies tag and scan filters across the catalog and resets pagination when searching", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<ClaudeCodePluginsPanel accessToken="member-token" userRole="Internal User" />, {
+    searchParams: { skills_page: "2" },
+  });
+  await waitFor(() => expect(catalogRequests.at(-1)?.searchParams.get("offset")).toBe("50"));
+  await chooseSelectOption(user, screen.getByRole("combobox", { name: "Filter by tag" }), "engineering");
+  await waitFor(() => expect(catalogRequests.at(-1)?.searchParams.get("tag")).toBe("engineering"));
+  expect(catalogRequests.at(-1)?.searchParams.get("offset")).toBe("0");
+  await chooseSelectOption(user, screen.getByRole("combobox", { name: "Security scan" }), "Security scan: Yes");
+  await waitFor(() => expect(catalogRequests.at(-1)?.searchParams.get("security_scan_passed")).toBe("true"));
+  fireEvent.change(screen.getByRole("textbox", { name: /Search skills/ }), {
+    target: { value: "reviewer@example.test" },
+  });
+  await waitFor(() => expect(catalogRequests.at(-1)?.searchParams.get("query")).toBe("reviewer@example.test"));
+  expect(catalogRequests.at(-1)?.searchParams.get("tag")).toBe("engineering");
+  expect(catalogRequests.at(-1)?.searchParams.get("security_scan_passed")).toBe("true");
 });

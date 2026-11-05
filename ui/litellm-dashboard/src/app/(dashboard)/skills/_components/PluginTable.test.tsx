@@ -44,7 +44,19 @@ describe("PluginTable", () => {
 
   it("should render every column header", () => {
     render(<PluginTable {...defaultProps} />);
-    for (const header of ["Skill Name", "Version", "Description", "Domain", "Public", "Updated at"]) {
+    for (const header of [
+      "Skill Name",
+      "Version",
+      "Description",
+      "Domain",
+      "Public",
+      "Tags",
+      "Created by",
+      "Approved by",
+      "Created",
+      "Last updated",
+      "Security scan",
+    ]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
   });
@@ -84,7 +96,8 @@ describe("PluginTable", () => {
   it("should show whether the skill is public", () => {
     render(<PluginTable {...defaultProps} />);
     expect(screen.getByText("Yes")).toBeInTheDocument();
-    expect(screen.getByText("No")).toBeInTheDocument();
+    const privateRow = screen.getByRole("row", { name: /older-skill/ });
+    expect(within(privateRow).getAllByText("No")).toHaveLength(2);
   });
 
   it("should delete a skill through the actions menu when admin", async () => {

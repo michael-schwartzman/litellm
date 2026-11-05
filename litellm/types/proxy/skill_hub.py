@@ -16,6 +16,11 @@ class SkillHubSkill(LiteLLMBaseModel):
     description: str | None = None
     version: str | None = None
     updated_at: datetime | None = None
+    created_at: datetime | None = None
+    created_by: str | None = None
+    approved_by: str | None = None
+    published_by: str | None = None
+    security_scan_passed: bool = False
     visibility: Literal["public", "private"]
     source: Mapping[str, str]
     download_url: str | None = None
@@ -26,6 +31,7 @@ class SkillHubSkill(LiteLLMBaseModel):
 
 
 class SkillHubList(LiteLLMBaseModel):
+    tags: tuple[str, ...] = ()
     model_config = ConfigDict(frozen=True)
 
     skills: tuple[SkillHubSkill, ...]

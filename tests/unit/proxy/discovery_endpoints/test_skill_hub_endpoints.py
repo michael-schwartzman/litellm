@@ -684,3 +684,77 @@ async def test_replacement_rejections_do_not_stage_or_change_files(pending_hub: 
     assert hub.database.litellm_skillsubmission.rows == ()
     hub.plugins.update.assert_not_awaited()
     hub.archives.upsert.assert_not_awaited()
+
+
+async def test_catalog_filters_metadata_before_pagination_and_preserves_tag_facets(hub: HubClient) -> None:
+    hub.plugins.find_many.return_value = [
+        prisma_models.LiteLLM_ClaudeCodePluginTable(
+            id=name, name=name, enabled=True, created_by="author@example.test",
+            created_at=datetime(2026, 1, 2), updated_at=datetime(2026, 2, 3),
+            manifest_json=json.dumps({
+                "source": {"source": "github", "repo": "example/skills"},
+                "keywords": tags,
+                "_litellm_published_by": "publisher@example.test",
+                **({"_litellm_review": {"approved_by": "reviewer@example.test", "security_scan_passed": scanned}} if approved else {}),
+            }),
+        )
+        for name, tags, approved, scanned in (
+            ("a-other", ["support"], False, False),
+            ("b-review", ["engineering"], True, False),
+            ("c-review", ["engineering"], True, True),
+        )
+    ]
+    response = await hub.client.get(HUB, headers=_headers(MASTER_KEY), params={
+        "query": " REVIEWER ", "tag": "ENGINEERING", "limit": 1, "offset": 1,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert body["tags"] == ["engineering", "support"]
+    assert [skill["name"] for skill in body["skills"]] == ["c-review"]
+    skill = body["skills"][0]
+    assert skill["created_by"] == "author@example.test"
+    assert skill["published_by"] == "publisher@example.test"
+    assert skill["approved_by"] == "reviewer@example.test"
+    assert skill["created_at"].startswith("2026-01-02")
+    assert skill["updated_at"].startswith("2026-02-03")
+    assert skill["security_scan_passed"] is True
+    scanned = await hub.client.get(HUB, headers=_headers(MASTER_KEY), params={"security_scan_passed": "true"})
+    assert [skill["name"] for skill in scanned.json()["skills"]] == ["c-review"]
+    unscanned = await hub.client.get(HUB, headers=_headers(MASTER_KEY), params={"security_scan_passed": "false"})
+    assert [skill["name"] for skill in unscanned.json()["skills"]] == ["a-other", "b-review"]
+    assert unscanned.json()["skills"][0]["approved_by"] is None
+
+
+@pytest.mark.parametrize("has_issues", (False, True))
+async def test_admin_approval_does_not_override_scan_result(pending_hub: HubClient, has_issues: bool) -> None:
+    hub: Final = pending_hub
+    pending: Final = await _upload(hub, _zip(FILES), MEMBER_KEY, version=None)
+    receipt: Final = pending.json()
+    submission: Final = hub.database.litellm_skillsubmission.rows[0]
+    digest: Final = hashlib.sha256(submission.archive_content.decode()).hexdigest()
+    query: Final = hub.database.litellm_skillsubmission.query_raw
+
+    async def with_scan(statement: str, *args: object) -> tuple[Mapping[str, object], ...]:
+        if "scan_json" in statement:
+            return ({"scan_json": json.dumps({
+                "status": "completed", "archive_sha256": digest,
+                "report": {"complete": True, "risk_score": 0,
+                           "findings": [{"severity": "LOW"}] if has_issues else []},
+            })},)
+        return await query(statement, *args)
+
+    hub.database.query_raw.side_effect = with_scan
+    approved: Final = await hub.client.put(
+        f"/skill-hub/submissions/{receipt['submission_id']}/approve", headers=_headers(MASTER_KEY),
+    )
+    assert approved.status_code == 200
+    skill: Final = approved.json()["skill"]
+    assert skill["security_scan_passed"] is not has_issues
+    assert skill["created_by"] == MEMBER_KEY
+    assert skill["approved_by"] == approved.json()["submission"]["reviewed_by"]
+    assert skill["published_by"] == skill["approved_by"]
+    _stored_upload(hub)
+    listed: Final = (await hub.client.get(HUB, headers=_headers(MASTER_KEY))).json()["skills"][0]
+    assert listed["security_scan_passed"] is not has_issues
+    assert listed["published_by"] == skill["published_by"]
