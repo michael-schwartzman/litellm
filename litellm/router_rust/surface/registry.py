@@ -50,7 +50,7 @@ from functools import lru_cache, partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypeAlias, cast  # noqa: TID251  # entries as a caller wrote them
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from litellm import exceptions as litellm_exceptions
 from litellm import get_secret_str
@@ -579,6 +579,25 @@ def _index_key(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _has_non_str_keys(value: object) -> bool:
+    """Whether ``value`` holds a dict key that is not a string, which a JSON record reads back as one."""
+    pending: list[object] = [value]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, Mapping):
+            for key, item in current.items():
+                if not isinstance(key, str):
+                    return True
+                pending.append(item)
+        elif isinstance(current, list | tuple):
+            pending.extend(current)
+    return False
+
+
 class HostRegistry(HostModelInfo):
     """The live model_list and its indexes, kept the way the Python router core keeps them."""
 
@@ -597,7 +616,13 @@ class HostRegistry(HostModelInfo):
         self._deployment_index_lock: Final = threading.RLock()
         self._core_model_group_alias: dict[str, str | RouterModelGroupAliasItem] = model_group_alias  # mutable-ok: the live alias map  # fmt: skip
         # The live model_list: router-core's deployments read back, every write a changeset.
-        self._core_model_list: Final[HostedModelList] = HostedModelList(self._live_handle, self._hand_changes)
+        self._core_model_list: Final[HostedModelList] = HostedModelList(
+            self._live_handle, self._hand_changes, self.live_params, self.live_info
+        )
+        # The litellm_params values a deployment's JSON cannot carry (an Exception or model object as
+        # ``mock_response``, a callable ``azure_ad_token_provider``), by deployment id: an attempt is called with them, as Python's list held them.
+        self._live_params: Final[dict[str, Mapping[str, object]]] = {}  # mutable-ok: written as deployments register
+        self._live_info: Final[dict[str, Mapping[str, object]]] = {}  # mutable-ok: written as deployments register
         # The indexes the registry hands out: router-core's, read back, every write a changeset.
         self._indexes: Final = HostedIndexes(self._live_handle, self._hand_changes)
         self._core_deployment_latency_map: dict[str, float] = {}  # mutable-ok: the live latency map
@@ -1159,6 +1184,37 @@ class HostRegistry(HostModelInfo):
             deployment.litellm_params.rpm = getattr(deployment, "rpm")  # noqa: B009  # an extra field of the entry  # rebind-ok: the core sets it on the deployment it adds
         if deployment.litellm_params.tpm is None and getattr(deployment, "tpm", None) is not None:
             deployment.litellm_params.tpm = getattr(deployment, "tpm")  # noqa: B009  # an extra field of the entry  # rebind-ok: see above
+        live: Final = {
+            key: value
+            for key, value in {
+                **deployment.litellm_params.__dict__,
+                **(deployment.litellm_params.__pydantic_extra__ or {}),
+            }.items()
+            # Values JSON cannot carry: errors, models, callables, and a str subclass that marks the
+            # value (an admin's secret reference, which only the deployment's own key may resolve).
+            if isinstance(value, (BaseException, BaseModel))
+            or callable(value)
+            or (isinstance(value, str) and type(value) is not str)
+        }
+        # model_info values JSON reads back changed: a dict with keys that are not strings.
+        live_info: Final = {
+            key: value
+            for key, value in {
+                **deployment.model_info.__dict__,
+                **(deployment.model_info.__pydantic_extra__ or {}),
+            }.items()
+            if _has_non_str_keys(value)
+        }
+        model_id: Final = deployment.model_info.id
+        if model_id is not None:
+            if live:
+                self._live_params[model_id] = live
+            else:
+                self._live_params.pop(model_id, None)
+            if live_info:
+                self._live_info[model_id] = live_info
+            else:
+                self._live_info.pop(model_id, None)
         data_sources: Final = deployment.litellm_params.get("dataSources", []) or []
         for source, key, value in data_source_values:
             data_sources[source]["parameters"][key] = value
@@ -1447,6 +1503,14 @@ class HostRegistry(HostModelInfo):
         idx: Final[object] = None if handle is None or key is None else handle.id_position(key)
         return None if idx is None else self._core_model_list[idx]  # pyright: ignore[reportArgumentType, reportCallIssue]  # a position, or what a caller wrote, read as Python reads it
 
+    def live_params(self, model_id: object) -> Mapping[str, object]:
+        """The litellm_params values of deployment ``model_id`` that its JSON record cannot carry."""
+        return self._live_params.get(model_id, {}) if isinstance(model_id, str) else {}
+
+    def live_info(self, model_id: object) -> Mapping[str, object]:
+        """The model_info values a deployment's JSON record reads back changed, by id."""
+        return self._live_info.get(model_id, {}) if isinstance(model_id, str) else {}
+
     def _core_get_deployment(self, model_id: str) -> Deployment | None:
         entry: Final = self._core_get_model_info(model_id)
         return None if entry is None else Deployment(**entry)  # pyright: ignore[reportArgumentType]  # a stored entry
@@ -1541,8 +1605,14 @@ class HostRegistry(HostModelInfo):
             for name in (self._core_routing_groups or {})
             if (group := self.get_routing_group(name)) is not None
         ]
+        # The provider is inferred only for a name no deployment or alias serves: inferring it for an
+        # authenticating provider's name would start its sign-in (`_get_wildcard_deployments`).
         wildcard: Final = (
-            [model_name, f"{inferred_provider(model_name)}/{model_name}"] if model_name is not None else []
+            []
+            if model_name is None
+            else [model_name]
+            if model_name in alias_map or model_name in self._core_model_names
+            else [model_name, f"{inferred_provider(model_name)}/{model_name}"]
         )
         return {"aliases": aliases, "groups": groups, "wildcard": wildcard, "only": only}
 

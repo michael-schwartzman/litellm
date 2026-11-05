@@ -218,6 +218,12 @@ class OptionalChecks:
         self.optional_callbacks.append(callback)
         self._host.callbacks.add_litellm_callback(callback)
 
+    def adopt(self, callback: object) -> None:
+        """Own a check already registered with the host: list it in ``optional_callbacks``."""
+        if self.optional_callbacks is None:
+            self.optional_callbacks = []
+        self.optional_callbacks.append(callback)
+
     def ensure_deployment_affinity_callback(self) -> None:
         """``_ensure_deployment_affinity_callback``: the affinity check with every global flag off."""
         if any(isinstance(cb, DeploymentAffinityCheck) for cb in self.optional_callbacks or ()):
@@ -323,7 +329,9 @@ class OptionalChecks:
         if self.optional_callbacks is None or not any(type(cb) is callback_cls for cb in self.optional_callbacks):
             return
         self.optional_callbacks = [cb for cb in self.optional_callbacks if type(cb) is not callback_cls]
-        others: Final = tuple(owner for owner in live_check_owners if id(owner) != id(self._owner))
+        others: Final = tuple(
+            owner for owner in live_check_owners if id(owner) != id(self._owner) and _router_alive(owner)
+        )
         if any(any(type(cb) is callback_cls for cb in (owner.optional_callbacks or ())) for owner in others):
             return
         callbacks: Final = _callbacks(self._host)
@@ -552,6 +560,11 @@ class RustOptionalChecks:
     def optional_callbacks(self) -> "list[object] | None":  # mutable-ok: the router's live list
         return self._opt.optional_callbacks
 
+    @optional_callbacks.setter
+    def optional_callbacks(self, value: "list[object] | None") -> None:  # mutable-ok: the list a caller assigns
+        """Assigning the list replaces it, as on the Python router: the checks read the new one."""
+        self._opt.optional_callbacks = value
+
     @property
     def router_budget_logger(self) -> RouterBudgetLimiting | None:
         return self._opt.router_budget_logger
@@ -648,3 +661,9 @@ __all__ = [
     "filtered_ids",
     "register_router_selector",
 ]
+
+
+def _router_alive(owner: object) -> bool:
+    """A core whose public ``Router`` was dropped holds no check: it only waits for the collector."""
+    handle: Final = vars(owner).get("_core_owner") if hasattr(owner, "__dict__") else None
+    return not callable(handle) or handle() is not None

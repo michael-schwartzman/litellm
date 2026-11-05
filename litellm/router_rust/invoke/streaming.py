@@ -108,6 +108,8 @@ class StreamAttempt:
     deployment_id: str | None
     attempted_retries: int
     committed_budget: int | None = None
+    # The group a pre-routing hook selected for ``group``, which a fallback lookup keys on first.
+    routed: str | None = None
     # The deployment's max_parallel_requests slot the attempt holds; an open chat stream takes it.
     slot: contextlib.ExitStack | None = None
     # Set by the wrapper that reports the stream's outcome when it ends; the attempt's answer is then
@@ -132,6 +134,7 @@ class StreamAttempt:
             "deployment_id": self.deployment_id,
             "attempted_retries": self.attempted_retries,
             "committed_budget": self.committed_budget,
+            "routed": self.routed,
         }
 
     def policy(self, trigger: BaseException | None = None) -> Mapping[str, object]:
@@ -1664,7 +1667,7 @@ def wrap_responses_stream(  # noqa: C901  # one function per Python wrapper it p
                 else cast("MidStreamFallbackError", stream_error)  # cast-ok: not a context window error
             )
             if response_id_exposed:
-                _raise_original_mid_stream_error(e)
+                _raise_released_stream_error(attempt, e)
             async with contextlib.aclosing(
                 _responses_fallback_attempt(attempt, e, source_iterator, wrapper.adopt_fallback_headers, held)
             ) as fallback_stream:
@@ -1684,6 +1687,33 @@ def wrap_responses_stream(  # noqa: C901  # one function per Python wrapper it p
 
     wrapper: Final = FallbackResponsesStreamWrapper(stream_with_fallbacks())
     return wrapper
+
+
+def _raise_released_stream_error(attempt: StreamAttempt, e: MidStreamFallbackError) -> NoReturn:
+    """A background stream whose response id is already out raises its provider error as is; a content
+    policy refusal before output reads as the router's error would after the walk found no fallback."""
+    from litellm.litellm_core_utils.routing_common_utils import format_content_policy_no_fallback_note
+    from litellm.router_utils.fallback_event_handlers import fallback_lookup_groups, fallbacks_disabled_for_request
+
+    original: Final = e.original_exception
+    request: Final = attempt.request
+    model_group: Final = request.get("model")
+    if (
+        attempt.core._host.dynamic().expose_router_debug_in_errors  # pyright: ignore[reportPrivateUsage]  # the attempt's own core
+        and isinstance(original, litellm_exceptions.ContentPolicyViolationError)
+        and isinstance(model_group, str)
+        and not fallbacks_disabled_for_request(request)
+        and _mid_stream_error_before_output(e)
+    ):
+        walked: Final = attempt.core._walked_fallbacks  # pyright: ignore[reportPrivateUsage]  # the attempt's own core
+        original.message += format_content_policy_no_fallback_note(
+            model_group,
+            fallback_lookup_groups(request, model_group),
+            request.get("content_policy_fallbacks", walked.get("content_policy_fallbacks")),
+            request.get("fallbacks", walked.get("fallbacks")),
+            attempt.depth > 0,
+        )
+    _raise_original_mid_stream_error(e)
 
 
 def _responses_continuation_request(
@@ -1782,6 +1812,18 @@ async def _responses_fallback_attempt(
                     verbose_router_logger.debug("stream_with_fallbacks(aresponses): error closing fallback: %s", exc)
 
 
+def _reported_transcription_stream(attempt: StreamAttempt, response: object) -> object:
+    """A transcription stream reports its attempt's outcome when it ends: a stream that fails after it
+    opened cools its deployment down by the rules, as the router's failure callback does."""
+    from litellm.litellm_core_utils.audio_utils.transcription_streaming import LoggingAsyncTranscriptionStream
+
+    if not isinstance(response, LoggingAsyncTranscriptionStream):
+        return response
+    attempt.reports_outcome = True  # rebind-ok: the stream reports this attempt's outcome
+    response._iterator = _areported(attempt, response._iterator, lambda _last: 0)  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]  # the stream's own iterator, wrapped
+    return response
+
+
 # --- the attempt hook ---------------------------------------------------------------------------
 
 
@@ -1798,7 +1840,13 @@ async def open_attempt_stream(attempt: StreamAttempt, response: object) -> objec
         return wrap_chat_stream(attempt, response, first_chunk, held_slot)
     if not attempt.kwargs.get("stream"):
         return response
+    if attempt.op == "atranscription":
+        return _reported_transcription_stream(attempt, response)
     if attempt.op == "aresponses" and isinstance(response, BaseResponsesAPIStreamingIterator):
+        # `_aresponses_streaming_iterator` wraps a call that asked for a stream, not one the
+        # deployment's own `stream` setting forced.
+        if not attempt.request.get("stream"):
+            return response
         return wrap_responses_stream(attempt, response)
     if attempt.op in ("aanthropic_messages", "anthropic_messages") and hasattr(response, "__aiter__"):
         return wrap_anthropic_stream(attempt, cast("AsyncIterator[bytes]", response))  # cast-ok: a byte stream

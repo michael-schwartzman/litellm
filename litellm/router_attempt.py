@@ -3,8 +3,7 @@ One router attempt, as the host runs it: the request for the deployment the rout
 
 The Rust router core picks a deployment and hands the attempt to its host; ``PythonHost`` builds
 the keyword arguments for that one deployment here and calls ``litellm.<op>`` with them. Nothing
-here selects, retries, falls back or records cooldowns: the core does all of that. Nothing here
-reads a Python router either, so this module outlives ``router_python_core.py``.
+here selects, retries, falls back or records cooldowns: the core does all of that.
 """
 
 import re

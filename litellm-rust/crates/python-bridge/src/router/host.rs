@@ -79,6 +79,10 @@ pub(crate) enum Stage {
     RouteIncapable { handler: String },
     /// `_decisions_deployment_refuses_media`: return the candidates that refuse the call's media.
     MediaRefusing,
+    /// `deployments_admitting_embedding_batch`: return the candidates the embedding pick keeps.
+    EmbeddingBatch,
+    /// The override strategy's pre-call check on a deployment named by id.
+    OverrideCheck(String),
     /// The routing plugins: run them when `run`, then return the candidate models they left.
     RoutingPlugins { run: bool },
     /// The host's `CustomLogger` deployment filters: return the ids that remain, or a failure.
@@ -163,6 +167,8 @@ pub(crate) enum HostCall {
         /// The name the attempt resolved: the requested name or the fallback target.
         model: String,
         model_group: String,
+        /// The group a pre-routing hook selected for `model`, when it differs.
+        routed: Option<String>,
         /// The `order` level of a same-group order fallback.
         target_order: Option<i64>,
         /// Every deployment `model` resolved to for this caller, the picked one included.
@@ -693,6 +699,7 @@ impl Host for StepHost {
             deployment: deployment_record(&attempt.deployment),
             model: attempt.name.clone(),
             model_group: attempt.model_group.clone(),
+            routed: attempt.routed.clone(),
             target_order: attempt.target_order,
             candidate_ids: attempt.candidate_ids.clone(),
             retry: attempt.retry,
@@ -743,6 +750,8 @@ impl Host for StepHost {
                     handler: handler.clone(),
                 },
                 SelectStage::MediaRefusing => Stage::MediaRefusing,
+                SelectStage::EmbeddingBatch => Stage::EmbeddingBatch,
+                SelectStage::OverrideCheck(strategy) => Stage::OverrideCheck(strategy.to_string()),
             },
             pool: ctx.pool.iter().map(|d| d.id.clone()).collect(),
             model_group: ctx.model_group.to_owned(),
@@ -922,6 +931,7 @@ impl Host for StepHost {
                 | RouterEvent::Blocked { .. }
                 | RouterEvent::CooldownSet { .. }
                 | RouterEvent::Selected { .. }
+                | RouterEvent::PickStarted { .. }
         ) {
             return;
         }

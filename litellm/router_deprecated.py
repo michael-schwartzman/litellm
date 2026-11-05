@@ -92,10 +92,9 @@ def _note(name: str, replacement: str) -> None:
 def _as_router(obj: "DeprecatedRouterMembers") -> "Router":
     """The Router this mixin is part of (it is mixed into ``litellm.Router`` only)."""
     from litellm.router import Router
-    from litellm.router_python_core import PythonCore
 
-    if isinstance(obj, (Router, PythonCore)):
-        return obj  # pyright: ignore[reportReturnType]  # a PythonCore carries every member the mixin reads
+    if isinstance(obj, Router):
+        return obj
     raise TypeError(f"{type(obj).__name__} is not a litellm.Router; DeprecatedRouterMembers is mixed into Router only")
 
 
