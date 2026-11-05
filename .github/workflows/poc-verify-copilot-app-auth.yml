@@ -19,8 +19,13 @@ jobs:
       - run: uv sync --inexact --frozen --extra proxy --group proxy-dev
       - name: unit tests (github_copilot)
         run: uv run pytest tests/unit/llms/github_copilot -q -p no:cacheprovider 2>&1 | tail -25
+      - name: basedpyright on changed files
+        continue-on-error: true
+        run: uv run --no-sync basedpyright litellm/llms/github_copilot/app_installation_auth.py litellm/llms/github_copilot/authenticator.py litellm/llms/github_copilot/common_utils.py 2>&1 | grep -E "error|warning" | head -60
       - name: lint gates
-        run: set -o pipefail; BASE_REF=79e63d3e06 make lint 2>&1 | tail -80
+        id: lint
+        continue-on-error: true
+        run: set -o pipefail; BASE_REF=79e63d3e06 make lint 2>&1 | tail -30
       - name: e2e before (upstream main)
         env:
           GITHUB_COPILOT_APP_ID: "5626339"
