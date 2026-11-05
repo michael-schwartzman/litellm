@@ -1,0 +1,40 @@
+name: poc-verify-copilot-app-auth
+on:
+  push:
+    branches: [poc_verify_copilot_app_auth]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_COPILOT_TOKEN_DIR: ${{ github.workspace }}/.copilot-tokens
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --inexact --frozen --extra proxy --group proxy-dev
+      - name: unit tests (github_copilot)
+        run: uv run pytest tests/unit/llms/github_copilot -q -p no:cacheprovider 2>&1 | tail -25
+      - name: lint gates
+        continue-on-error: true
+        run: BASE_REF=79e63d3e06 make lint 2>&1 | tail -60
+      - name: e2e before (upstream main)
+        env:
+          GITHUB_COPILOT_APP_ID: "5626339"
+          GITHUB_COPILOT_APP_INSTALLATION_ID: "178889411"
+          GITHUB_COPILOT_APP_PRIVATE_KEY: ${{ secrets.COPILOT_APP_PRIVATE_KEY }}
+        run: |
+          git checkout 79e63d3e06 -- litellm/
+          git rm -q --cached litellm/llms/github_copilot/app_installation_auth.py 2>/dev/null; rm -f litellm/llms/github_copilot/app_installation_auth.py
+          ./poc/e2e.sh before || true
+          git checkout HEAD -- litellm/
+      - name: e2e after (this branch)
+        env:
+          GITHUB_COPILOT_APP_ID: "5626339"
+          GITHUB_COPILOT_APP_INSTALLATION_ID: "178889411"
+          GITHUB_COPILOT_APP_PRIVATE_KEY: ${{ secrets.COPILOT_APP_PRIVATE_KEY }}
+        run: ./poc/e2e.sh after
