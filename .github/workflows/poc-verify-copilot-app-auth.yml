@@ -23,9 +23,7 @@ jobs:
         continue-on-error: true
         run: uv run --no-sync basedpyright litellm/llms/github_copilot/app_installation_auth.py litellm/llms/github_copilot/authenticator.py litellm/llms/github_copilot/common_utils.py 2>&1 | grep -E "error|warning" | head -60
       - name: lint gates
-        id: lint
-        continue-on-error: true
-        run: set -o pipefail; BASE_REF=79e63d3e06 make lint 2>&1 | tail -30
+        run: set -o pipefail; BASE_REF=79e63d3e06 make lint 2>&1 | grep -E "OK:|FAIL|BREACH|passed|Would reformat|Error|errors" 
       - name: e2e before (upstream main)
         env:
           GITHUB_COPILOT_APP_ID: "5626339"
